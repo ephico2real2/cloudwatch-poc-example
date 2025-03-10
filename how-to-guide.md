@@ -57,6 +57,16 @@ This guide details how to install, configure, and troubleshoot the AWS CloudWatc
 Connect to your EC2 instance via SSH, then run:
 
 ```bash
+
+CW_NAMESPACE="dotmobi-tools-api/CloudWatchAgentServer"
+CW_CONFIG="/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json"
+
+# Update the apt package index
+apt-get -y update
+
+# Install collectd
+apt-get -y install collectd
+
 # Update package lists
 sudo apt-get update
 
@@ -81,7 +91,7 @@ rm ./amazon-cloudwatch-agent.deb
 sudo mkdir -p /opt/aws/amazon-cloudwatch-agent/etc/
 
 # Open the configuration file for editing
-sudo nano /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+sudo vi /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
 ```
 
 ### 2. Paste the Following JSON Configuration
@@ -92,68 +102,41 @@ This sample configuration collects both system logs (such as /var/log/syslog) an
 {
   "agent": {
     "metrics_collection_interval": 60,
-    "run_as_user": "root"
+    "run_as_user": "root",
+    "timezone": "Local"
   },
   "logs": {
     "logs_collected": {
       "files": {
         "collect_list": [
           {
-            "file_path": "/var/log/syslog",
+            "file_path": "/var/log/*.log",
             "log_group_name": "system-logs",
-            "log_stream_name": "{instance_id}-syslog",
+            "log_stream_name": "{instance_id}-system",
             "retention_in_days": 14
-          }
-        ]
-      },
-      "systemd": {
-        "collect_list": [
+          },
           {
-            "unit_name": "zendesk-it-glue.service",
-            "log_group_name": "systemd-services",
+            "file_path": "/usr/local/api/logs/zendesk_it_glue_*.log",
+            "log_group_name": "zendesk-it-glue-logs",
             "log_stream_name": "{instance_id}-zendesk-it-glue",
             "retention_in_days": 14
           },
           {
-            "unit_name": "it-glue-backup.service",
-            "log_group_name": "systemd-services",
+            "file_path": "/usr/local/api/logs/it_glue_export_*.log",
+            "log_group_name": "it-glue-backup-logs",
             "log_stream_name": "{instance_id}-it-glue-backup",
             "retention_in_days": 14
           },
           {
-            "unit_name": "jamf-pro-notifications.service",
-            "log_group_name": "systemd-services",
+            "file_path": "/usr/local/api/logs/jamf_pro_*.log",
+            "log_group_name": "jamf-pro-logs",
             "log_stream_name": "{instance_id}-jamf-pro",
             "retention_in_days": 14
           },
           {
-            "unit_name": "zendesk-statusio.service",
-            "log_group_name": "systemd-services",
+            "file_path": "/usr/local/api/logs/zendesk_statusio_*.log",
+            "log_group_name": "zendesk-statusio-logs", 
             "log_stream_name": "{instance_id}-zendesk-statusio",
-            "retention_in_days": 14
-          },
-          {
-            "unit_name": "sshd.service",
-            "log_group_name": "systemd-core",
-            "log_stream_name": "{instance_id}-sshd",
-            "retention_in_days": 14
-          },
-          {
-            "unit_name": "systemd-networkd.service",
-            "log_group_name": "systemd-core",
-            "log_stream_name": "{instance_id}-networkd",
-            "retention_in_days": 14
-          },
-          {
-            "unit_name": "systemd-journald.service",
-            "log_group_name": "systemd-core",
-            "log_stream_name": "{instance_id}-journald",
-            "retention_in_days": 14
-          },
-          {
-            "unit_name": "amazon-cloudwatch-agent.service",
-            "log_group_name": "systemd-core",
-            "log_stream_name": "{instance_id}-cloudwatch-agent",
             "retention_in_days": 14
           }
         ]
@@ -161,58 +144,58 @@ This sample configuration collects both system logs (such as /var/log/syslog) an
     }
   },
   "metrics": {
+    "namespace": "dotmobi-tools-api/CloudWatchAgentServer",
+    "aggregation_dimensions": [
+      [
+        "InstanceId"
+      ]
+    ],
     "metrics_collected": {
+      "collectd": {
+        "metrics_aggregation_interval": 60
+      },
       "cpu": {
-        "resources": [
-          "*"
-        ],
         "measurement": [
-          "usage_active",
-          "usage_system",
-          "usage_user",
-          "usage_idle"
+          "cpu_usage_idle",
+          "cpu_usage_iowait",
+          "cpu_usage_user",
+          "cpu_usage_system"
         ],
-        "totalcpu": true
+        "metrics_collection_interval": 60,
+        "totalcpu": false
       },
       "disk": {
-        "resources": [
-          "/"
-        ],
         "measurement": [
           "used_percent",
-          "inodes_used_percent",
-          "used",
-          "total"
+          "inodes_free"
+        ],
+        "metrics_collection_interval": 60,
+        "resources": [
+          "*"
+        ]
+      },
+      "diskio": {
+        "measurement": [
+          "io_time"
+        ],
+        "metrics_collection_interval": 60,
+        "resources": [
+          "*"
         ]
       },
       "mem": {
         "measurement": [
-          "used_percent",
-          "available",
-          "used",
-          "total"
-        ]
-      },
-      "netstat": {
-        "measurement": [
-          "tcp_established",
-          "tcp_time_wait"
-        ]
+          "mem_used_percent"
+        ],
+        "metrics_collection_interval": 60
       },
       "swap": {
         "measurement": [
-          "used_percent",
-          "used",
-          "free"
-        ]
+          "swap_used_percent"
+        ],
+        "metrics_collection_interval": 60
       }
-    },
-    "append_dimensions": {
-      "InstanceId": "${aws:InstanceId}"
-    },
-    "aggregation_dimensions": [
-      ["InstanceId"]
-    ]
+    }
   }
 }
 ```
@@ -278,8 +261,6 @@ sudo tail -f /var/log/amazon/amazon-cloudwatch-agent/amazon-cloudwatch-agent.log
 - Go to **Logs > Log groups**
 - Confirm the presence of log groups such as:
   - `system-logs`
-  - `systemd-services`
-  - `systemd-core`
 
 ---
 
@@ -323,6 +304,9 @@ sudo tail -f /var/log/amazon/amazon-cloudwatch-agent/amazon-cloudwatch-agent.log
 Use the verify command to catch syntax errors:
 ```bash
 sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a verify-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+
+# Start CloudWatch agent
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c file:$CW_CONFIG
 ```
 
 **Check Service Status:**
